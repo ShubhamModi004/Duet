@@ -1,0 +1,11 @@
+[package]
+name = "duet-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Wire protocol shared by Duet hosts, guests and the signaling server"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+rand.workspace = true

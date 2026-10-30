@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Duet uses your microphone so you can talk with your pair.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Duet does not use your camera, but macOS asks when a call starts.</string>
+</dict>
+</plist>

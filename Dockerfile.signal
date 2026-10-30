@@ -1,0 +1,15 @@
+# Duet signaling server. Media never passes through it, so it runs fine on the
+# smallest VM. Usage: docker run -p 8787:8787 duet-signal
+FROM rust:1-slim AS build
+WORKDIR /src
+COPY Cargo.toml ./
+COPY crates ./crates
+# The workspace lists the desktop app; build only the server.
+RUN sed -i 's#, "crates/duet-core", "app/src-tauri"##' Cargo.toml \
+ && cargo build --release -p duet-signal
+
+FROM debian:bookworm-slim
+COPY --from=build /src/target/release/duet-signal /usr/local/bin/duet-signal
+ENV DUET_ADDR=0.0.0.0:8787
+EXPOSE 8787
+CMD ["duet-signal"]

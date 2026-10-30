@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Duet pointers</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+    .ptr {
+      position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
+      border: 3px solid #fff; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+      transition: left 40ms linear, top 40ms linear, opacity 300ms;
+    }
+    .ptr.idle { opacity: 0; }
+  </style>
+</head>
+<body>
+  <script>
+    // Draws each guest's pointer on the host's screen. Pointers fade after a
+    // few seconds without movement.
+    const pointers = new Map();
+    window.__TAURI__.event.listen("host-event", ({ payload: ev }) => {
+      if (ev.type === "peer_left") {
+        pointers.get(ev.id)?.el.remove();
+        pointers.delete(ev.id);
+        return;
+      }
+      if (ev.type !== "pointer") return;
+      let p = pointers.get(ev.id);
+      if (!p) {
+        const el = document.createElement("div");
+        el.className = "ptr";
+        document.body.append(el);
+        p = { el, timer: 0 };
+        pointers.set(ev.id, p);
+      }
+      p.el.style.background = ev.color;
+      p.el.style.left = ev.x * 100 + "vw";
+      p.el.style.top = ev.y * 100 + "vh";
+      p.el.classList.remove("idle");
+      clearTimeout(p.timer);
+      p.timer = setTimeout(() => p.el.classList.add("idle"), 4000);
+    });
+  </script>
+</body>
+</html>

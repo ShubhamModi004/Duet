@@ -1,0 +1,25 @@
+[package]
+name = "duet-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Duet host engine: screen capture, WebRTC, remote input"
+
+[dependencies]
+duet-protocol = { path = "../duet-protocol" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+futures.workspace = true
+tracing.workspace = true
+tokio-tungstenite.workspace = true
+libwebrtc = { version = "0.3", optional = true }
+enigo = "0.6"
+anyhow = "1"
+parking_lot = "0.12"
+
+[features]
+default = ["webrtc"]
+# The WebRTC host engine. Disable to unit-test input/keymap without building
+# libwebrtc (which needs clang 21+ on Linux).
+webrtc = ["dep:libwebrtc"]
