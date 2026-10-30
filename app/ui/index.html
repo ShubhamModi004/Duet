@@ -6,109 +6,113 @@
   <title>Duet</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
-  <!-- Home: choose to host or join -->
-  <main id="home" class="screen">
-    <header class="brand">
-      <span class="logo" aria-hidden="true"><i></i><i></i></span>
-      <h1>Duet</h1>
-      <p class="muted">Pair programming that feels like sitting side by side.</p>
-    </header>
+<body class="panel-body">
+  <div class="shell">
+    <!-- Home -->
+    <section id="home" class="view">
+      <header class="top">
+        <span class="logo" aria-hidden="true"><i></i><i></i></span>
+        <strong>Duet</strong>
+        <span class="spacer"></span>
+        <button id="open-settings" class="icon" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M11.3 1.5l.4 2.1c.5.2 1 .5 1.4.8l2-.7 1.3 2.3-1.6 1.4a5 5 0 010 1.6l1.6 1.4-1.3 2.3-2-.7c-.4.3-.9.6-1.4.8l-.4 2.1H8.7l-.4-2.1c-.5-.2-1-.5-1.4-.8l-2 .7L3.6 11.4l1.6-1.4a5 5 0 010-1.6L3.6 7l1.3-2.3 2 .7c.4-.3.9-.6 1.4-.8l.4-2.1h2.6zM10 7a3 3 0 100 6 3 3 0 000-6z"/></svg>
+        </button>
+      </header>
 
-    <label class="field">
-      <span>Your name</span>
-      <input id="name" autocomplete="name" placeholder="Ada" />
-    </label>
+      <div class="body">
+        <button id="host-btn" class="big primary">
+          <span class="big-title">Start sharing</span>
+          <span class="big-sub">Your pair sees your screen and can drive when you allow it</span>
+        </button>
 
-    <div class="cards">
-      <section class="card">
-        <h2>Share my screen</h2>
-        <p class="muted">Your pair sees your screen, talks with you, and can drive when you allow it.</p>
-        <details>
-          <summary>Server</summary>
-          <label class="toggle"><input type="checkbox" id="host-local" /> Same network only (run the server on this computer)</label>
-          <label class="field">
-            <span>Custom server (blank = Duet's server)</span>
-            <input id="host-server" placeholder="duet-signal-shubham.fly.dev" spellcheck="false" />
-          </label>
-        </details>
-        <button id="host-btn" class="primary">Start sharing</button>
-      </section>
+        <div class="or"><span>or join a pair</span></div>
 
-      <section class="card">
-        <h2>Join a pair</h2>
+        <form id="join-form" class="join">
+          <input id="join-room" placeholder="Room code, e.g. kip-moza-tule" autocapitalize="off" autocomplete="off" spellcheck="false" />
+          <button id="join-btn" class="primary" type="submit">Join</button>
+        </form>
+
+        <p id="home-error" class="error" role="alert"></p>
+      </div>
+
+      <footer class="foot">
+        <span class="muted">You're <strong id="who"></strong></span>
+        <span class="spacer"></span>
+        <span id="server-label" class="muted small"></span>
+      </footer>
+    </section>
+
+    <!-- Settings -->
+    <section id="settings" class="view" hidden>
+      <header class="top">
+        <button id="close-settings" class="icon" title="Back" aria-label="Back">
+          <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12.7 4.3L7 10l5.7 5.7-1.4 1.4L4.2 10l7.1-7.1z"/></svg>
+        </button>
+        <strong>Settings</strong>
+      </header>
+      <div class="body">
         <label class="field">
-          <span>Room code</span>
-          <input id="join-room" placeholder="kip-moza-tule" autocapitalize="off" spellcheck="false" />
+          <span>Your name</span>
+          <input id="name" autocomplete="name" placeholder="Ada" />
         </label>
-        <details>
-          <summary>Server</summary>
-          <label class="field">
-            <span>Only if your host gave you one (blank = Duet's server)</span>
-            <input id="join-server" placeholder="192.168.1.20" spellcheck="false" />
-          </label>
-        </details>
-        <button id="join-btn" class="primary">Join</button>
-      </section>
-    </div>
-    <p id="home-error" class="error" role="alert"></p>
-  </main>
-
-  <!-- Hosting -->
-  <main id="host" class="screen" hidden>
-    <header class="bar">
-      <div>
-        <div class="muted small">Room code</div>
-        <div class="room"><code id="room-code"></code> <button id="copy-room" class="ghost small">Copy</button></div>
+        <label class="field">
+          <span>Server (blank = Duet's server)</span>
+          <input id="server" placeholder="duet-signal-shubham.fly.dev" spellcheck="false" />
+        </label>
+        <label class="check">
+          <input type="checkbox" id="host-local" />
+          <span>When I share, run the server on this computer (same Wi-Fi only)</span>
+        </label>
+        <p class="muted small">Your pair uses the same server you do. Leave it blank unless you run your own.</p>
       </div>
-      <div class="spacer"></div>
-      <button id="host-mute" class="ghost">Mute</button>
-      <button id="host-stop" class="danger">Stop sharing</button>
-    </header>
-
-    <section class="panel">
-      <h3>Guests join with the room code and server</h3>
-      <ul id="join-servers" class="mono"></ul>
+      <footer class="foot">
+        <span class="spacer"></span>
+        <button id="quit" class="ghost small">Quit Duet</button>
+      </footer>
     </section>
 
-    <section class="panel">
-      <div class="row">
-        <h3>People</h3>
-        <div class="spacer"></div>
-        <label class="toggle"><input type="checkbox" id="auto-grant" /> Let guests take control without asking</label>
+    <!-- Sharing -->
+    <section id="live" class="view" hidden>
+      <header class="top">
+        <span class="live-dot" aria-hidden="true"></span>
+        <strong>Sharing your screen</strong>
+        <span class="spacer"></span>
+        <button id="host-mute" class="ghost small">Mute</button>
+      </header>
+
+      <div class="body">
+        <div class="code-card">
+          <div class="muted small">Send this code to your pair</div>
+          <div class="code-row">
+            <code id="room-code"></code>
+            <button id="copy-room" class="ghost small">Copy</button>
+          </div>
+          <div id="server-hint" class="muted small mono" hidden></div>
+        </div>
+
+        <div id="control-banner" class="banner" hidden>
+          <span id="control-text"></span>
+          <button id="take-back" class="small">Take back</button>
+        </div>
+
+        <div class="section-title">People</div>
+        <ul id="guests" class="people"></ul>
+
+        <label class="check">
+          <input type="checkbox" id="auto-grant" />
+          <span>Let guests take control without asking</span>
+        </label>
+        <p class="muted small">Moving your own mouse always takes control back.</p>
+        <ul id="host-log" class="log"></ul>
       </div>
-      <ul id="guests" class="list"><li class="muted">Waiting for someone to join…</li></ul>
+
+      <footer class="foot">
+        <button id="host-stop" class="danger wide">Stop sharing</button>
+      </footer>
     </section>
+  </div>
 
-    <section id="control-banner" class="panel highlight" hidden>
-      <span id="control-text"></span>
-      <div class="spacer"></div>
-      <button id="take-back" class="primary">Take back control</button>
-    </section>
-    <p class="muted small">Moving your own mouse also takes control back.</p>
-    <ul id="host-log" class="log"></ul>
-  </main>
-
-  <!-- Guest viewer -->
-  <main id="guest" class="screen viewer" hidden>
-    <header class="bar compact">
-      <span id="guest-status" class="pill">Connecting…</span>
-      <div class="spacer"></div>
-      <div class="seg" role="group" aria-label="Mode">
-        <button id="mode-point" class="seg-btn active">Point</button>
-        <button id="mode-control" class="seg-btn">Control</button>
-      </div>
-      <button id="guest-mute" class="ghost">Mute</button>
-      <button id="guest-leave" class="danger">Leave</button>
-    </header>
-    <div id="stage" class="stage" tabindex="0">
-      <video id="screen" autoplay playsinline muted></video>
-      <div id="my-pointer" class="pointer" hidden></div>
-      <div id="stage-hint" class="hint">Waiting for the host's screen…</div>
-    </div>
-    <audio id="voice" autoplay></audio>
-  </main>
-
-  <script src="app.js"></script>
+  <script src="common.js"></script>
+  <script src="panel.js"></script>
 </body>
 </html>

@@ -1,194 +1,13 @@
-// Duet UI: host panel (drives the Rust engine) and guest viewer (plain WebRTC).
+// The viewer window: shows the host's screen over plain browser WebRTC,
+// sends pointers, and drives the host's computer once allowed.
 "use strict";
 
-const tauri = window.__TAURI__;
-const invoke = (cmd, args) => tauri.core.invoke(cmd, args);
-const $ = (id) => document.getElementById(id);
-
-// Hosted signaling server (Fly.io). Used unless a custom or local server is chosen.
-const DEFAULT_SERVER = "wss://duet-signal-shubham.fly.dev/ws";
 const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 const POINTER_COLORS = ["#ff7a59", "#5c8cff", "#2fb36d", "#c05cff"];
-const prefs = {
-  get(k, d = "") { try { return localStorage.getItem("duet." + k) ?? d; } catch { return d; } },
-  set(k, v) { try { localStorage.setItem("duet." + k, v); } catch {} },
-};
-
-function show(id) {
-  for (const s of document.querySelectorAll(".screen")) s.hidden = s.id !== id;
-}
-
-function myName() {
-  const n = $("name").value.trim() || "Guest";
-  prefs.set("name", n);
-  return n;
-}
-
-// ---------------------------------------------------------------- home
-
-$("name").value = prefs.get("name");
-$("host-server").value = prefs.get("hostServer");
-$("host-local").checked = prefs.get("hostLocal") === "1";
-$("join-server").value = prefs.get("joinServer");
-
-$("host-btn").onclick = () => startHosting().catch((e) => homeError(e));
-$("join-btn").onclick = () => {
-  const room = $("join-room").value.trim().toLowerCase();
-  const server = normalizeServer($("join-server").value) || DEFAULT_SERVER;
-  if (!room) return homeError("Enter the room code your host gave you.");
-  prefs.set("joinServer", server);
-  joinRoom(server, room, myName()).catch((e) => { homeError(e); show("home"); });
-};
-
-function homeError(e) {
-  $("home-error").textContent = String(e?.message ?? e);
-}
-
-/**
- * Accepts "192.168.1.20", "host:8787", "duet.example.com" or a full ws(s):// URL.
- * Bare IPs and host:port use plain ws on port 8787 (the built-in server);
- * bare domain names use wss (a hosted server behind HTTPS).
- */
-function normalizeServer(s) {
-  s = s.trim();
-  if (!s) return "";
-  if (/^https?:\/\//.test(s)) s = s.replace(/^http/, "ws");
-  if (!/^wss?:\/\//.test(s)) {
-    const local = /^[\d.]+(:\d+)?$/.test(s) || /:\d+$/.test(s) || /^localhost\b/.test(s);
-    s = (local ? "ws://" : "wss://") + s;
-  }
-  const u = new URL(s);
-  if (!u.port && u.protocol === "ws:") u.port = "8787";
-  if (u.pathname === "/" || u.pathname === "") u.pathname = "/ws";
-  return u.toString();
-}
-
-// ---------------------------------------------------------------- host
-
-const host = { guests: new Map(), controller: null, muted: false, unlisten: null };
-
-async function startHosting() {
-  homeError("");
-  const custom = $("host-server").value.trim();
-  const local = $("host-local").checked;
-  prefs.set("hostServer", custom);
-  prefs.set("hostLocal", local ? "1" : "0");
-  const server = local ? null : normalizeServer(custom) || DEFAULT_SERVER;
-  $("host-btn").disabled = true;
-  try {
-    host.unlisten = await tauri.event.listen("host-event", (e) => onHostEvent(e.payload));
-    const res = await invoke("host_start", { name: myName(), server });
-    $("room-code").textContent = res.room;
-    $("join-servers").innerHTML = "";
-    for (const s of res.join_servers) {
-      const li = document.createElement("li");
-      li.textContent = s;
-      $("join-servers").append(li);
-    }
-    if (!res.join_servers.length) $("join-servers").innerHTML = "<li>No network address found.</li>";
-    host.guests.clear();
-    renderGuests();
-    show("host");
-  } catch (e) {
-    host.unlisten?.();
-    throw e;
-  } finally {
-    $("host-btn").disabled = false;
-  }
-}
-
-function onHostEvent(ev) {
-  switch (ev.type) {
-    case "peer_joined":
-      host.guests.set(ev.peer.id, { name: ev.peer.name, state: "new", wants: false });
-      log(`${ev.peer.name} joined`);
-      break;
-    case "peer_left": {
-      const g = host.guests.get(ev.id);
-      host.guests.delete(ev.id);
-      if (g) log(`${g.name} left`);
-      break;
-    }
-    case "peer_connection": {
-      const g = host.guests.get(ev.id);
-      if (g) g.state = ev.state;
-      break;
-    }
-    case "control_requested": {
-      const g = host.guests.get(ev.id);
-      if (g) g.wants = true;
-      break;
-    }
-    case "control_changed":
-      host.controller = ev.controller;
-      for (const g of host.guests.values()) g.wants = false;
-      break;
-    case "pointer":
-      break; // drawn by the overlay window
-    case "error":
-      log("⚠ " + ev.message);
-      break;
-    case "stopped":
-      host.unlisten?.();
-      show("home");
-      return;
-  }
-  renderGuests();
-}
-
-function renderGuests() {
-  const ul = $("guests");
-  ul.innerHTML = "";
-  if (!host.guests.size) {
-    ul.innerHTML = '<li class="muted">Waiting for someone to join…</li>';
-  }
-  for (const [id, g] of host.guests) {
-    const li = document.createElement("li");
-    const dot = document.createElement("span");
-    dot.className = "dot" + (g.state === "connected" ? " connected" : "");
-    const name = document.createElement("span");
-    name.textContent = g.name + (host.controller === id ? " (driving)" : "");
-    li.append(dot, name);
-    const spacer = document.createElement("span");
-    spacer.className = "spacer";
-    li.append(spacer);
-    if (g.wants) {
-      const allow = button("Allow control", "primary small", () => invoke("host_grant", { peer: id }));
-      const deny = button("Deny", "ghost small", () => { g.wants = false; invoke("host_deny", { peer: id }); renderGuests(); });
-      li.append(allow, deny);
-    } else if (host.controller !== id && g.state === "connected") {
-      li.append(button("Give control", "ghost small", () => invoke("host_grant", { peer: id })));
-    }
-    ul.append(li);
-  }
-  const driving = host.controller && host.guests.get(host.controller);
-  $("control-banner").hidden = !driving;
-  if (driving) $("control-text").textContent = `${driving.name} is controlling your computer.`;
-}
-
-function button(text, cls, onclick) {
-  const b = document.createElement("button");
-  b.textContent = text;
-  b.className = cls;
-  b.onclick = onclick;
-  return b;
-}
-
-function log(text) {
-  const li = document.createElement("li");
-  li.textContent = new Date().toLocaleTimeString() + "  " + text;
-  $("host-log").prepend(li);
-}
-
-$("copy-room").onclick = () => navigator.clipboard?.writeText($("room-code").textContent);
-$("host-stop").onclick = () => invoke("host_stop");
-$("take-back").onclick = () => invoke("host_revoke");
-$("auto-grant").onchange = (e) => invoke("host_set_auto_grant", { on: e.target.checked });
-$("host-mute").onclick = () => {
-  host.muted = !host.muted;
-  $("host-mute").textContent = host.muted ? "Unmute" : "Mute";
-  invoke("host_set_muted", { muted: host.muted });
-};
+const params = new URLSearchParams(location.search);
+const ROOM = params.get("room") || "";
+const SERVER = params.get("server") || DEFAULT_SERVER;
+const NAME = params.get("name") || "Guest";
 
 // ---------------------------------------------------------------- guest
 
@@ -199,8 +18,6 @@ const guest = {
 const isMacGuest = /Mac/i.test(navigator.platform || navigator.userAgent);
 
 async function joinRoom(server, room, name) {
-  homeError("");
-  show("guest");
   setStatus("Connecting…");
   $("stage-hint").hidden = false;
 
@@ -291,7 +108,7 @@ function sendSignal(to, payload) {
 
 function setupChannel(dc) {
   guest.dc = dc;
-  dc.onopen = () => send({ type: "hello", name: myName(), os: isMacGuest ? "macos" : "other" });
+  dc.onopen = () => send({ type: "hello", name: NAME, os: isMacGuest ? "macos" : "other" });
   dc.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.type === "hello") guest.hostOs = m.os;
@@ -365,9 +182,22 @@ function leave(reason) {
   resetPeer();
   guest.mic?.getTracks().forEach((t) => t.stop());
   guest.mic = null;
-  setMode("point");
-  show("home");
-  if (reason) homeError(reason);
+  if (reason) {
+    // Keep the window open so the reason can be read.
+    setStatus("Disconnected");
+    $("stage-hint").textContent = reason;
+    $("stage-hint").hidden = false;
+    $("guest-leave").textContent = "Close";
+    $("guest-leave").onclick = closeWindow;
+  } else {
+    closeWindow();
+  }
+}
+
+function closeWindow() {
+  const w = tauri?.window?.getCurrentWindow?.();
+  if (w) w.close().catch(() => window.close());
+  else window.close();
 }
 
 // ---- input capture on the shared screen
@@ -453,3 +283,8 @@ stage.addEventListener("keyup", (e) => {
   if (isModifierCode(e.code)) return;
   send({ type: "key_up", code: e.code, modifiers: modifiers(e) });
 });
+
+document.title = `Duet · ${ROOM}`;
+$("room-label").textContent = ROOM;
+window.addEventListener("beforeunload", () => guest.ws?.send(JSON.stringify({ type: "leave" })));
+joinRoom(SERVER, ROOM, NAME).catch((e) => leave(errorText(e)));

@@ -109,8 +109,29 @@ pub enum ControlMsg {
     /// Committed text from a soft keyboard or IME; typed verbatim.
     Text { text: String },
 
-    // Presence.
-    Pointer { x: f64, y: f64, color: String },
+    // Presence. The host fills `from` and `name` when it relays a guest's
+    // pointer or stroke to everyone else; guests leave them empty.
+    Pointer {
+        x: f64,
+        y: f64,
+        color: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from: Option<PeerId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    /// Part of a freehand stroke. A stroke arrives as several messages with the
+    /// same `stroke` id, each carrying only its new points; `end` closes it.
+    Draw {
+        stroke: String,
+        points: Vec<[f64; 2]>,
+        color: String,
+        #[serde(default)]
+        end: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from: Option<PeerId>,
+    },
+    ClearDrawings,
     HostCursor { x: f64, y: f64 },
     /// First message each side sends. `os` is `"macos"`, `"windows"`, ... so a
     /// guest can map Ctrl/Cmd shortcuts to the host's platform.
@@ -155,6 +176,12 @@ impl ControlMsg {
             *v = if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 };
         }
         match &mut self {
+            ControlMsg::Draw { points, .. } => {
+                for [x, y] in points.iter_mut() {
+                    c(x);
+                    c(y);
+                }
+            }
             ControlMsg::MouseMove { x, y }
             | ControlMsg::MouseDown { x, y, .. }
             | ControlMsg::MouseUp { x, y, .. }
@@ -234,6 +261,29 @@ mod tests {
     fn clamps_coordinates() {
         let m = ControlMsg::MouseMove { x: 1.7, y: f64::NAN }.clamped();
         assert_eq!(m, ControlMsg::MouseMove { x: 1.0, y: 0.0 });
+    }
+
+    #[test]
+    fn pointer_and_draw_wire_format() {
+        let p: ControlMsg = serde_json::from_value(json!({
+            "type": "pointer", "x": 0.2, "y": 0.3, "color": "#f00"
+        }))
+        .unwrap();
+        assert!(matches!(p, ControlMsg::Pointer { from: None, name: None, .. }));
+        // Relayed pointers carry who sent them; local ones don't serialize nulls.
+        assert!(serde_json::to_value(&p).unwrap().get("from").is_none());
+
+        let d = ControlMsg::Draw {
+            stroke: "s1".into(),
+            points: vec![[1.5, 0.5], [-1.0, f64::INFINITY]],
+            color: "#0f0".into(),
+            end: false,
+            from: None,
+        }
+        .clamped();
+        let ControlMsg::Draw { points, .. } = d else { unreachable!() };
+        assert_eq!(points, vec![[1.0, 0.5], [0.0, 0.0]]);
+        assert!(!ControlMsg::ClearDrawings.is_input());
     }
 
     #[test]

@@ -2,6 +2,13 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Duet windows may call the app's own commands and listen to its events.",
-  "windows": ["main", "overlay"],
-  "permissions": ["core:default"]
+  "windows": [
+    "main",
+    "overlay",
+    "viewer"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close"
+  ]
 }

@@ -31,6 +31,9 @@ use crate::input::Injector;
 
 pub const DEFAULT_STUN: &str = "stun:stun.l.google.com:19302";
 const MAX_VIDEO_BITRATE: u64 = 8_000_000;
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+const CAPTURE_TIMEOUT: Duration = Duration::from_secs(15);
+const SCREEN_PERMISSION_HINT: &str = "screen capture didn't start. On macOS, turn on Duet in System Settings → Privacy & Security → Screen Recording, then quit and reopen Duet";
 
 #[derive(Debug, Clone)]
 pub struct HostConfig {
@@ -65,7 +68,9 @@ pub enum HostEvent {
     PeerConnection { id: PeerId, state: String },
     ControlRequested { id: PeerId },
     ControlChanged { controller: Option<PeerId> },
-    Pointer { id: PeerId, x: f64, y: f64, color: String },
+    Pointer { id: PeerId, name: String, x: f64, y: f64, color: String },
+    Draw { id: PeerId, stroke: String, points: Vec<[f64; 2]>, color: String, end: bool },
+    ClearDrawings,
     Error { message: String },
     Stopped,
 }
@@ -77,6 +82,7 @@ enum Command {
     Revoke,
     SetAutoGrant(bool),
     SetMuted(bool),
+    ClearDrawings,
     Stop,
 }
 
@@ -103,6 +109,10 @@ impl HostHandle {
     pub fn set_muted(&self, muted: bool) {
         let _ = self.tx.send(Command::SetMuted(muted));
     }
+    /// Wipes every annotation on every screen.
+    pub fn clear_drawings(&self) {
+        let _ = self.tx.send(Command::ClearDrawings);
+    }
     pub fn stop(&self) {
         let _ = self.tx.send(Command::Stop);
     }
@@ -123,6 +133,7 @@ enum InputCmd {
 }
 
 struct Guest {
+    name: String,
     pc: PeerConnection,
     dc: DataChannel,
 }
@@ -133,22 +144,43 @@ pub async fn start(
     cfg: HostConfig,
     events: mpsc::UnboundedSender<HostEvent>,
 ) -> anyhow::Result<HostHandle> {
+    use anyhow::Context;
+    use tokio::time::timeout;
+
     let room = cfg.room.clone().unwrap_or_else(duet_protocol::new_room_code);
-    let (mut ws, _) = tokio_tungstenite::connect_async(&cfg.server_url).await?;
+    let url = cfg.server_url.clone();
+    tracing::info!(%url, "connecting to signaling server");
+    // A sleeping Fly machine takes a few seconds to wake, so allow some slack.
+    let (mut ws, _) = timeout(CONNECT_TIMEOUT, tokio_tungstenite::connect_async(&url))
+        .await
+        .map_err(|_| anyhow::anyhow!("couldn't reach the server at {url} (timed out)"))?
+        .with_context(|| format!("couldn't connect to the server at {url}"))?;
     let join = ClientMsg::Join { room: room.clone(), name: cfg.name.clone(), role: Role::Host };
     ws.send(Message::text(serde_json::to_string(&join)?)).await?;
 
-    let existing = loop {
-        let Some(frame) = ws.next().await else { anyhow::bail!("server closed the connection") };
-        let Message::Text(text) = frame? else { continue };
-        match serde_json::from_str::<ServerMsg>(&text)? {
-            ServerMsg::Joined { peers, .. } => break peers,
-            ServerMsg::Error { message, .. } => anyhow::bail!(message),
-            _ => continue,
+    let existing = timeout(CONNECT_TIMEOUT, async {
+        loop {
+            let Some(frame) = ws.next().await else { anyhow::bail!("server closed the connection") };
+            let Message::Text(text) = frame? else { continue };
+            match serde_json::from_str::<ServerMsg>(&text)? {
+                ServerMsg::Joined { peers, .. } => break Ok(peers),
+                ServerMsg::Error { message, .. } => anyhow::bail!(message),
+                _ => continue,
+            }
         }
-    };
+    })
+    .await
+    .map_err(|_| anyhow::anyhow!("the server at {url} didn't answer"))??;
+    tracing::info!(room, "joined room; starting screen capture");
 
-    let capture = ScreenCapture::start(cfg.fps)?;
+    // Capture start can block on the OS permission check, so keep it off the
+    // async runtime and give up with a useful message instead of hanging.
+    let fps = cfg.fps;
+    let capture = timeout(CAPTURE_TIMEOUT, tokio::task::spawn_blocking(move || ScreenCapture::start(fps)))
+        .await
+        .map_err(|_| anyhow::anyhow!(SCREEN_PERMISSION_HINT))?
+        .context("screen capture thread failed")??;
+    tracing::info!("screen capture running");
     let (tx, rx) = mpsc::unbounded_channel();
     let handle = HostHandle { tx, room: room.clone() };
     let _ = events.send(HostEvent::Started { room });
@@ -280,8 +312,9 @@ impl Session {
             return;
         }
         let id = peer.id.clone();
+        let name = peer.name.clone();
         let _ = self.events.send(HostEvent::PeerJoined { peer });
-        match self.connect_guest(&id).await {
+        match self.connect_guest(&id, name).await {
             Ok(guest) => {
                 self.guests.insert(id, guest);
             }
@@ -291,7 +324,7 @@ impl Session {
         }
     }
 
-    async fn connect_guest(&mut self, id: &PeerId) -> anyhow::Result<Guest> {
+    async fn connect_guest(&mut self, id: &PeerId, name: String) -> anyhow::Result<Guest> {
         let mut config = RtcConfiguration::default();
         config.ice_servers = vec![IceServer {
             urls: self.cfg.ice_servers.clone(),
@@ -349,7 +382,7 @@ impl Session {
             to: id.clone(),
             payload: json!({ "sdp": { "type": "offer", "sdp": offer.to_string() } }),
         });
-        Ok(Guest { pc, dc })
+        Ok(Guest { name, pc, dc })
     }
 
     async fn on_signal(&mut self, from: &PeerId, payload: Value) -> anyhow::Result<()> {
@@ -413,15 +446,38 @@ impl Session {
                     self.apply_control_event(ev);
                 }
             }
-            ControlMsg::Pointer { x, y, color } => {
-                let fwd = ControlMsg::Pointer { x, y, color: color.clone() }.clamped();
-                if let ControlMsg::Pointer { x, y, .. } = fwd {
-                    let _ = self.events.send(HostEvent::Pointer { id: from.clone(), x, y, color });
+            ControlMsg::Pointer { x, y, color, .. } => {
+                let name = self.guests.get(&from).map(|g| g.name.clone()).unwrap_or_default();
+                let fwd = ControlMsg::Pointer { x, y, color, from: Some(from.clone()), name: Some(name.clone()) }
+                    .clamped();
+                if let ControlMsg::Pointer { x, y, color, .. } = &fwd {
+                    let _ = self.events.send(HostEvent::Pointer {
+                        id: from.clone(),
+                        name,
+                        x: *x,
+                        y: *y,
+                        color: color.clone(),
+                    });
                 }
-                for id in self.guests.keys().filter(|id| **id != from).cloned().collect::<Vec<_>>() {
-                    self.send_to(&id, &fwd);
-                }
+                self.relay_except(&from, &fwd);
             }
+            ControlMsg::Draw { stroke, points, color, end, .. } => {
+                if points.len() > 512 {
+                    return; // a well-behaved guest sends a few points per frame
+                }
+                let fwd = ControlMsg::Draw { stroke, points, color, end, from: Some(from.clone()) }.clamped();
+                if let ControlMsg::Draw { stroke, points, color, end, .. } = &fwd {
+                    let _ = self.events.send(HostEvent::Draw {
+                        id: from.clone(),
+                        stroke: stroke.clone(),
+                        points: points.clone(),
+                        color: color.clone(),
+                        end: *end,
+                    });
+                }
+                self.relay_except(&from, &fwd);
+            }
+            ControlMsg::ClearDrawings => self.clear_drawings(),
             _ => {}
         }
     }
@@ -441,6 +497,10 @@ impl Session {
             }
             Command::SetMuted(muted) => {
                 self.mic.set_enabled(!muted);
+                None
+            }
+            Command::ClearDrawings => {
+                self.clear_drawings();
                 None
             }
             Command::Stop => None,
@@ -485,6 +545,18 @@ impl Session {
                 let text = serde_json::to_string(msg).expect("ControlMsg serializes");
                 let _ = g.dc.send(text.as_bytes(), false);
             }
+        }
+    }
+
+    fn clear_drawings(&self) {
+        self.broadcast(&ControlMsg::ClearDrawings);
+        let _ = self.events.send(HostEvent::ClearDrawings);
+    }
+
+    /// Sends to every guest except `from` (who already drew it locally).
+    fn relay_except(&self, from: &PeerId, msg: &ControlMsg) {
+        for id in self.guests.keys().filter(|id| *id != from) {
+            self.send_to(id, msg);
         }
     }
 

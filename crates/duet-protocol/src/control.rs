@@ -111,7 +111,7 @@ mod tests {
     fn non_input_is_never_injected() {
         let mut s = ControlState::default();
         s.grant(p("a"));
-        let ptr = ControlMsg::Pointer { x: 0.1, y: 0.1, color: "#f00".into() };
+        let ptr = ControlMsg::Pointer { x: 0.1, y: 0.1, color: "#f00".into(), from: None, name: None };
         assert!(!s.accepts_input(&p("a"), &ptr));
     }
 

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Duet</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="viewer-body">
+  <header class="vbar">
+    <span id="guest-status" class="pill">Connecting…</span>
+    <code id="room-label" class="muted small"></code>
+    <span class="spacer"></span>
+    <div class="seg" role="group" aria-label="Mode">
+      <button id="mode-point" class="seg-btn active">Point</button>
+      <button id="mode-control" class="seg-btn">Control</button>
+    </div>
+    <button id="guest-mute" class="ghost small">Mute</button>
+    <button id="guest-leave" class="danger small">Leave</button>
+  </header>
+  <div id="stage" class="stage" tabindex="0">
+    <video id="screen" autoplay playsinline muted></video>
+    <div id="my-pointer" class="pointer" hidden></div>
+    <div id="stage-hint" class="hint">Waiting for the host's screen…</div>
+  </div>
+  <audio id="voice" autoplay></audio>
+
+  <script src="common.js"></script>
+  <script src="viewer.js"></script>
+</body>
+</html>
