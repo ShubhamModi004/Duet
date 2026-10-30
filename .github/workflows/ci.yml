@@ -21,7 +21,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libxdo-dev
       - run: cargo test -p duet-protocol -p duet-signal
       - run: cargo test -p duet-core --no-default-features
-      - run: node --check app/ui/app.js
+      - run: for f in app/ui/*.js; do node --check "$f"; done
 
   build:
     name: Build ${{ matrix.name }}
