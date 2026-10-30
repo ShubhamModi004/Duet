@@ -25,7 +25,12 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "app", "msi", "nsis"],
+    "targets": [
+      "dmg",
+      "app",
+      "msi",
+      "nsis"
+    ],
     "category": "DeveloperTool",
     "shortDescription": "Fast remote pair programming",
     "longDescription": "Share your screen, hand over mouse and keyboard, and talk in real time over peer-to-peer WebRTC.",
@@ -38,7 +43,8 @@
     ],
     "macOS": {
       "minimumSystemVersion": "13.0",
-      "entitlements": "Entitlements.plist"
+      "entitlements": "Entitlements.plist",
+      "signingIdentity": "-"
     }
   }
 }

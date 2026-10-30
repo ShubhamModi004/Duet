@@ -2,3 +2,16 @@
 app/src-tauri/gen/
 .DS_Store
 *.log
+
+# Local leftovers and tooling
+.duet-*
+*.tmp
+*.tgz
+.env
+.env.*
+node_modules/
+.idea/
+.vscode/
+.cursor/
+*.swp
+Thumbs.db

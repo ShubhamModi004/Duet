@@ -1,0 +1,16 @@
+# libwebrtc ships with a static C runtime (/MT), and Tauri links the static
+# VC runtime too. Compile everything else the same way so the linker doesn't
+# see two runtimes (LNK2038 / LNK1169).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# libwebrtc's Objective-C categories (video codecs, capturers) are only loaded
+# when the linker is told to keep ObjC symbols.
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-args=-ObjC"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-args=-ObjC"]
