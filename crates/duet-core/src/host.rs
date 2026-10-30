@@ -147,6 +147,10 @@ pub async fn start(
     use anyhow::Context;
     use tokio::time::timeout;
 
+    // Other dependencies can enable a second TLS backend, and then rustls
+    // can't pick one by itself and panics on the first wss:// connection.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let room = cfg.room.clone().unwrap_or_else(duet_protocol::new_room_code);
     let url = cfg.server_url.clone();
     tracing::info!(%url, "connecting to signaling server");

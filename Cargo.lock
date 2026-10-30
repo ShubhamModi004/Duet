@@ -990,6 +990,7 @@ dependencies = [
  "futures",
  "libwebrtc",
  "parking_lot",
+ "rustls",
  "serde",
  "serde_json",
  "tokio",
