@@ -5,6 +5,8 @@ const tauri = window.__TAURI__;
 const invoke = (cmd, args) => tauri.core.invoke(cmd, args);
 const $ = (id) => document.getElementById(id);
 
+// Hosted signaling server (Fly.io). Used unless a custom or local server is chosen.
+const DEFAULT_SERVER = "wss://duet-signal-shubham.fly.dev/ws";
 const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 const POINTER_COLORS = ["#ff7a59", "#5c8cff", "#2fb36d", "#c05cff"];
 const prefs = {
@@ -26,13 +28,14 @@ function myName() {
 
 $("name").value = prefs.get("name");
 $("host-server").value = prefs.get("hostServer");
+$("host-local").checked = prefs.get("hostLocal") === "1";
 $("join-server").value = prefs.get("joinServer");
 
 $("host-btn").onclick = () => startHosting().catch((e) => homeError(e));
 $("join-btn").onclick = () => {
   const room = $("join-room").value.trim().toLowerCase();
-  const server = normalizeServer($("join-server").value);
-  if (!room || !server) return homeError("Enter the room code and server your host gave you.");
+  const server = normalizeServer($("join-server").value) || DEFAULT_SERVER;
+  if (!room) return homeError("Enter the room code your host gave you.");
   prefs.set("joinServer", server);
   joinRoom(server, room, myName()).catch((e) => { homeError(e); show("home"); });
 };
@@ -41,11 +44,19 @@ function homeError(e) {
   $("home-error").textContent = String(e?.message ?? e);
 }
 
-/** Accepts "192.168.1.20", "host:8787" or a full ws:// URL. */
+/**
+ * Accepts "192.168.1.20", "host:8787", "duet.example.com" or a full ws(s):// URL.
+ * Bare IPs and host:port use plain ws on port 8787 (the built-in server);
+ * bare domain names use wss (a hosted server behind HTTPS).
+ */
 function normalizeServer(s) {
   s = s.trim();
   if (!s) return "";
-  if (!/^wss?:\/\//.test(s)) s = "ws://" + s;
+  if (/^https?:\/\//.test(s)) s = s.replace(/^http/, "ws");
+  if (!/^wss?:\/\//.test(s)) {
+    const local = /^[\d.]+(:\d+)?$/.test(s) || /:\d+$/.test(s) || /^localhost\b/.test(s);
+    s = (local ? "ws://" : "wss://") + s;
+  }
   const u = new URL(s);
   if (!u.port && u.protocol === "ws:") u.port = "8787";
   if (u.pathname === "/" || u.pathname === "") u.pathname = "/ws";
@@ -58,12 +69,15 @@ const host = { guests: new Map(), controller: null, muted: false, unlisten: null
 
 async function startHosting() {
   homeError("");
-  const server = $("host-server").value.trim();
-  prefs.set("hostServer", server);
+  const custom = $("host-server").value.trim();
+  const local = $("host-local").checked;
+  prefs.set("hostServer", custom);
+  prefs.set("hostLocal", local ? "1" : "0");
+  const server = local ? null : normalizeServer(custom) || DEFAULT_SERVER;
   $("host-btn").disabled = true;
   try {
     host.unlisten = await tauri.event.listen("host-event", (e) => onHostEvent(e.payload));
-    const res = await invoke("host_start", { name: myName(), server: server ? normalizeServer(server) : null });
+    const res = await invoke("host_start", { name: myName(), server });
     $("room-code").textContent = res.room;
     $("join-servers").innerHTML = "";
     for (const s of res.join_servers) {

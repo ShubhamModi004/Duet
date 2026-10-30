@@ -26,9 +26,10 @@
         <p class="muted">Your pair sees your screen, talks with you, and can drive when you allow it.</p>
         <details>
           <summary>Server</summary>
+          <label class="toggle"><input type="checkbox" id="host-local" /> Same network only (run the server on this computer)</label>
           <label class="field">
-            <span>Signaling server (blank = run one on this computer)</span>
-            <input id="host-server" placeholder="ws://pair.example.com:8787/ws" />
+            <span>Custom server (blank = Duet's server)</span>
+            <input id="host-server" placeholder="duet-signal-shubham.fly.dev" spellcheck="false" />
           </label>
         </details>
         <button id="host-btn" class="primary">Start sharing</button>
@@ -40,10 +41,13 @@
           <span>Room code</span>
           <input id="join-room" placeholder="kip-moza-tule" autocapitalize="off" spellcheck="false" />
         </label>
-        <label class="field">
-          <span>Server</span>
-          <input id="join-server" placeholder="ws://192.168.1.20:8787/ws" spellcheck="false" />
-        </label>
+        <details>
+          <summary>Server</summary>
+          <label class="field">
+            <span>Only if your host gave you one (blank = Duet's server)</span>
+            <input id="join-server" placeholder="192.168.1.20" spellcheck="false" />
+          </label>
+        </details>
         <button id="join-btn" class="primary">Join</button>
       </section>
     </div>
@@ -63,7 +67,7 @@
     </header>
 
     <section class="panel">
-      <h3>Guests join with</h3>
+      <h3>Guests join with the room code and server</h3>
       <ul id="join-servers" class="mono"></ul>
     </section>
 

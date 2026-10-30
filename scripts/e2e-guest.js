@@ -47,6 +47,7 @@ const UI = process.argv[2];
   await guest.goto('http://127.0.0.1:8899/index.html');
   await guest.fill('#name', 'Lin');
   await guest.fill('#join-room', 'e2e-room');
+  await guest.locator('#join-server').evaluate((el) => (el.closest('details').open = true));
   await guest.fill('#join-server', '127.0.0.1');
   await guest.click('#join-btn');
   await guest.waitForFunction(() => document.getElementById('screen').videoWidth > 0, null, { timeout: 15000 });

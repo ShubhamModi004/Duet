@@ -2,7 +2,7 @@
 # smallest VM. Usage: docker run -p 8787:8787 duet-signal
 FROM rust:1-slim AS build
 WORKDIR /src
-COPY Cargo.toml ./
+COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 # The workspace lists the desktop app; build only the server.
 RUN sed -i 's#, "crates/duet-core", "app/src-tauri"##' Cargo.toml \

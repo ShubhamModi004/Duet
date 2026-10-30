@@ -1,0 +1,6 @@
+# flyctl launch added from .gitignore
+target
+**/app/src-tauri/gen
+**/.DS_Store
+**/*.log
+fly.toml
